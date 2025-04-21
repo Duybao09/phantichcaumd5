@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DUY BẢO ADMIN V14</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <style>
+    body {
+      background: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    button, input, select {
+      padding: 10px;
+      margin: 5px;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+    }
+    button {
+      background: red;
+      color: white;
+      cursor: pointer;
+    }
+    .tab {
+      display: none;
+    }
+    .tab.active {
+      display: block;
+    }
+    .tab-buttons button {
+      margin: 5px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      border: 1px solid #fff;
+      padding: 6px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h2>DUY BẢO ADMIN V14</h2>
+
+  <div id="loginBox">
+    <input type="password" id="adminPass" placeholder="Nhập mật khẩu admin..." />
+    <button onclick="checkAdmin()">ĐĂNG NHẬP</button>
+    <div id="loginResult" style="color:yellow;"></div>
+  </div>
+
+  <div id="adminArea" style="display:none;">
+    <div class="tab-buttons">
+      <button onclick="showTab('manage')">QUẢN LÝ</button>
+      <button onclick="showTab('stats')">THỐNG KÊ</button>
+      <button onclick="showTab('log')">NHẬT KÝ</button>
+      <button onclick="showTab('backup')">SAO LƯU</button>
+    </div>
+
+    <!-- Tab 1: Quản lý Key -->
+    <div class="tab active" id="tab-manage">
+      <input id="email" type="email" placeholder="Email" />
+      <input id="key" type="text" placeholder="Key" />
+      <input id="expire" type="date" />
+      <input id="maxUse" type="number" placeholder="Số lượt" />
+      <input id="note" type="text" placeholder="Ghi chú" />
+      <button onclick="addKey()">THÊM KEY</button>
+      <button onclick="exportCSV()">XUẤT EXCEL</button>
+      <div id="result" style="margin-top:10px; color:yellow;"></div>
+      <input type="text" id="search" placeholder="Tìm kiếm..." oninput="loadKeys()" style="width:80%; margin-top:10px;" />
+      <table id="keyTable">
+        <tr>
+          <th>Key</th><th>Email</th><th>Hết hạn</th><th>Lượt</th><th>Dùng</th><th>Còn</th><th>Ghi chú</th><th>Xoá</th>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Tab 2: Thống kê -->
+    <div class="tab" id="tab-stats">
+      <h3>THỐNG KÊ HỆ THỐNG</h3>
+      <div id="statsArea"></div>
+    </div>
+
+    <!-- Tab 3: Nhật ký -->
+    <div class="tab" id="tab-log">
+      <h3>NHẬT KÝ HOẠT ĐỘNG</h3>
+      <ul id="logList" style="text-align:left;"></ul>
+    </div>
+
+    <!-- Tab 4: Sao lưu -->
+    <div class="tab" id="tab-backup">
+      <h3>SAO LƯU TOÀN BỘ KEY</h3>
+      <button onclick="exportJSON()">TẢI FILE JSON</button>
+    </div>
+  </div>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDV-WnnRBzNGaJjCmJMY7NOWEPFioHOioU",
+      authDomain: "duybao-v11.firebaseapp.com",
+      databaseURL: "https://duybao-v11-default-rtdb.firebaseio.com",
+      projectId: "duybao-v11",
+      storageBucket: "duybao-v11.firebasestorage.app",
+      messagingSenderId: "637858629893",
+      appId: "1:637858629893:web:ad4d6de4f0f191b22b4f6c"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let log = [];
+
+    function checkAdmin() {
+      const pass = document.getElementById("adminPass").value.trim();
+      if (pass === "DUYBAO") {
+        document.getElementById("loginBox").style.display = "none";
+        document.getElementById("adminArea").style.display = "block";
+        loadKeys();
+        autoLogout();
+      } else {
+        document.getElementById("loginResult").innerText = "Sai mật khẩu!";
+      }
+    }
+
+    function showTab(id) {
+      document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
+      document.getElementById("tab-" + id).classList.add("active");
+      if (id === "stats") showStats();
+      if (id === "log") renderLog();
+    }
+
+    function addKey() {
+      const email = document.getElementById("email").value.trim();
+      const key = document.getElementById("key").value.trim();
+      const expire = document.getElementById("expire").value;
+      const maxUse = parseInt(document.getElementById("maxUse").value);
+      const note = document.getElementById("note").value.trim();
+      const createdAt = new Date().toISOString();
+
+      if (!email || !key || !expire || isNaN(maxUse)) {
+        document.getElementById("result").innerText = "Vui lòng điền đầy đủ!";
+        return;
+      }
+
+      db.ref("keys/" + key).set({
+        email, expire, maxUse, used: 0, note, createdAt
+      }, err => {
+        const msg = err ? "Lỗi khi thêm key!" : "Đã thêm key!";
+        document.getElementById("result").innerText = msg;
+        log.push(`[+][${new Date().toLocaleString()}] Thêm key: ${key}`);
+        loadKeys();
+      });
+    }
+
+    function loadKeys() {
+      const table = document.getElementById("keyTable");
+      const search = document.getElementById("search").value.toLowerCase();
+      table.innerHTML = `<tr><th>Key</th><th>Email</th><th>Hết hạn</th><th>Lượt</th><th>Dùng</th><th>Còn</th><th>Ghi chú</th><th>Xoá</th></tr>`;
+
+      db.ref("keys").once("value", snap => {
+        snap.forEach(child => {
+          const k = child.key;
+          const v = child.val();
+          if (k.toLowerCase().includes(search) || v.email?.toLowerCase().includes(search)) {
+            const remain = v.maxUse - v.used;
+            table.innerHTML += `
+              <tr>
+                <td>${k}</td><td>${v.email}</td><td>${v.expire}</td>
+                <td>${v.maxUse}</td><td>${v.used}</td><td>${remain}</td>
+                <td>${v.note || ''}</td>
+                <td><button onclick="delKey('${k}')">Xoá</button></td>
+              </tr>`;
+          }
+        });
+      });
+    }
+
+    function delKey(k) {
+      if (confirm("Xoá key '" + k + "'?")) {
+        db.ref("keys/" + k).remove(() => {
+          log.push(`[-][${new Date().toLocaleString()}] Xoá key: ${k}`);
+          loadKeys();
+        });
+      }
+    }
+
+    function exportCSV() {
+      db.ref("keys").once("value", snap => {
+        let csv = "Key,Email,Expire,MaxUse,Used,Remain,Note,CreatedAt\n";
+        snap.forEach(child => {
+          const v = child.val();
+          const remain = v.maxUse - v.used;
+          csv += `${child.key},${v.email},${v.expire},${v.maxUse},${v.used},${remain},${v.note || ''},${v.createdAt || ''}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "duybao_keys_v14.csv";
+        link.click();
+      });
+    }
+
+    function showStats() {
+      db.ref("keys").once("value", snap => {
+        let total = 0, expired = 0, active = 0, used = 0, remain = 0;
+        const today = new Date().toISOString().split("T")[0];
+
+        snap.forEach(child => {
+          const v = child.val();
+          total++;
+          if (v.expire < today) expired++; else active++;
+          used += v.used || 0;
+          remain += (v.maxUse - (v.used || 0));
+        });
+
+        document.getElementById("statsArea").innerHTML = `
+          <p>Tổng số key: <b>${total}</b></p>
+          <p>Key còn hạn: <b>${active}</b></p>
+          <p>Key hết hạn: <b>${expired}</b></p>
+          <p>Lượt đã dùng: <b>${used}</b></p>
+          <p>Lượt còn lại: <b>${remain}</b></p>
+        `;
+      });
+    }
+
+    function renderLog() {
+      const list = document.getElementById("logList");
+      list.innerHTML = "";
+      log.slice().reverse().forEach(entry => {
+        const li = document.createElement("li");
+        li.textContent = entry;
+        list.appendChild(li);
+      });
+    }
+
+    function exportJSON() {
+      db.ref("keys").once("value", snap => {
+        const json = JSON.stringify(snap.val(), null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "duybao_keys_backup.json";
+        link.click();
+      });
+    }
+
+    // Tự ẩn giao diện sau 5 phút không hoạt động
+    let idleTimer;
+    function autoLogout() {
+      resetIdle();
+      document.body.addEventListener("mousemove", resetIdle);
+      document.body.addEventListener("keypress", resetIdle);
+    }
+
+    function resetIdle() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        alert("Bạn đã không thao tác 5 phút. Tự đăng xuất.");
+        location.reload();
+      }, 300000); // 5 phút = 300,000 ms
+    }
+  </script>
+</body>
+</html>
