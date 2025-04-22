@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin DUYỆT KEY - V29.3</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #00ffe0;
+      padding: 20px;
+    }
+    h2 { color: #00ffe0; }
+    input, button {
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 5px;
+      border: none;
+      width: 100%;
+      font-size: 16px;
+    }
+    button {
+      background: #00ffe0;
+      color: black;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .box {
+      background: #222;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      box-shadow: 0 0 10px #00ffe0;
+    }
+    .note { font-size: 14px; color: #ccc; }
+    #mainContent { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- Nhập mật khẩu admin -->
+<div id="authBox">
+  <h2>Nhập mật khẩu Admin</h2>
+  <input type="password" id="adminPass" placeholder="Nhập mật khẩu...">
+  <button onclick="kiemTraMatKhau()">Xác nhận</button>
+  <p id="authMsg" style="color: red;"></p>
+</div>
+
+<!-- Nội dung chính -->
+<div id="mainContent">
+  <h2>DUYỆT NGƯỜI ĐĂNG KÝ</h2>
+  <button onclick="xoaSpamDangKy()" style="background:#ff5252; color:white; margin-bottom:20px;">XÓA SPAM ĐĂNG KÝ</button>
+  <div id="listDangKy"></div>
+
+  <hr style="margin: 30px 0; border-color: #00ffe0;">
+
+  <h2>DANH SÁCH KEY ĐÃ CẤP</h2>
+  <div id="listKeys"></div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyDV-WnnRBzNGaJjCmJMY7NOWEPFioHOioU",
+    authDomain: "duybao-v11.firebaseapp.com",
+    databaseURL: "https://duybao-v11-default-rtdb.firebaseio.com",
+    projectId: "duybao-v11"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  function kiemTraMatKhau() {
+    const pass = document.getElementById("adminPass").value.trim();
+    const maHoa = s => btoa(s).split('').reverse().join('').slice(1, 9); 
+    const hash = "zMDzTE5U";
+    if (maHoa(pass) === hash) {
+      document.getElementById("authBox").style.display = "none";
+      document.getElementById("mainContent").style.display = "block";
+      taiDuLieu();
+    } else {
+      document.getElementById("authMsg").innerText = "Sai mật khẩu!";
+    }
+  }
+
+  function taiDuLieu() {
+    const list = document.getElementById("listDangKy");
+    const keyList = document.getElementById("listKeys");
+
+    db.ref("dangky").on("value", snap => {
+      list.innerHTML = "";
+      const data = snap.val();
+      if (!data) {
+        list.innerHTML = "<p>Không có ai đăng ký...</p>";
+        return;
+      }
+
+      const emailCount = {};
+      Object.entries(data).forEach(([id, info]) => {
+        if (!info.gmail) return;
+        const email = info.gmail;
+        emailCount[email] = (emailCount[email] || 0) + 1;
+
+        if (emailCount[email] > 3) {
+          db.ref("dangky/" + id).remove();
+          return;
+        }
+
+        const div = document.createElement("div");
+        div.className = "box";
+        div.innerHTML = `
+          <p><strong>Email:</strong> ${info.gmail}</p>
+          <p><strong>Thời gian đăng ký:</strong> ${info.time || "Không rõ"}</p>
+          <input type="text" placeholder="Nhập key cấp" id="key-${id}">
+          <label><input type="checkbox" id="checkForever-${id}" onchange="toggleExpire('${id}')"> Key vĩnh viễn</label>
+          <input type="date" id="exp-${id}">
+          <input type="number" id="max-${id}" placeholder="Lượt dùng" value="10">
+          <button onclick="capKey('${id}', '${info.gmail}')">Cấp key</button>
+        `;
+        list.appendChild(div);
+      });
+    });
+
+    db.ref("keys").on("value", snap => {
+      keyList.innerHTML = "";
+      const data = snap.val();
+      if (!data) {
+        keyList.innerHTML = "<p>Chưa có key nào được cấp.</p>";
+        return;
+      }
+
+      Object.entries(data).forEach(([key, val]) => {
+        const now = new Date();
+        let timeLeft = '';
+        if (val.expire === "forever") {
+          timeLeft = "(Không hết hạn)";
+        } else {
+          const exp = new Date(val.expire);
+          const diff = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+          timeLeft = diff >= 0 ? `(Còn ${diff} ngày)` : "(Đã hết hạn)";
+        }
+
+        const div = document.createElement("div");
+        div.className = "box";
+        div.innerHTML = `
+          <p><strong>Key:</strong> ${key}</p>
+          <p><strong>Email:</strong> ${val.email}</p>
+          <p><strong>Hạn dùng:</strong> ${val.expire} ${timeLeft}</p>
+          <p><strong>Lượt dùng:</strong> ${val.used || 0} / ${val.maxUse}</p>
+          <p class="note">Tạo lúc: ${val.createdAt || "Không rõ"}</p>
+          <button onclick="xoaKey('${key}')">Xoá Key</button>
+        `;
+        keyList.appendChild(div);
+      });
+    });
+  }
+
+  function toggleExpire(id) {
+    const checkbox = document.getElementById("checkForever-" + id);
+    const expInput = document.getElementById("exp-" + id);
+    if (checkbox.checked) {
+      expInput.disabled = true;
+      expInput.value = "";
+      expInput.placeholder = "Không hết hạn";
+    } else {
+      expInput.disabled = false;
+      expInput.placeholder = "Chọn ngày hết hạn";
+    }
+  }
+
+  function capKey(id, email) {
+    const key = document.getElementById("key-" + id).value.trim();
+    const isForever = document.getElementById("checkForever-" + id).checked;
+    const expire = isForever ? "forever" : document.getElementById("exp-" + id).value;
+    const max = parseInt(document.getElementById("max-" + id).value);
+    const now = new Date().toLocaleString();
+
+    if (!key || (!isForever && !expire) || !max) {
+      alert("Vui lòng nhập đầy đủ thông tin!");
+      return;
+    }
+
+    db.ref("keys/" + key).set({
+      email: email,
+      expire: expire,
+      maxUse: max,
+      used: 0,
+      createdAt: now
+    });
+    db.ref("dangky/" + id).remove();
+    alert(`Đã cấp key: ${key}`);
+  }
+
+  function xoaKey(key) {
+    if (confirm("Xác nhận xoá key: " + key)) {
+      db.ref("keys/" + key).remove();
+    }
+  }
+
+  function xoaSpamDangKy() {
+    db.ref("dangky").once("value").then(snapshot => {
+      const data = snapshot.val();
+      const emailCount = {};
+      const toDelete = [];
+
+      for (let id in data) {
+        const email = data[id].gmail;
+        if (!email) continue;
+        emailCount[email] = (emailCount[email] || []);
+        emailCount[email].push(id);
+      }
+
+      Object.values(emailCount).forEach(arr => {
+        if (arr.length > 3) {
+          arr.forEach(id => toDelete.push(id));
+        }
+      });
+
+      toDelete.forEach(id => {
+        db.ref("dangky/" + id).remove();
+      });
+
+      alert(`Đã xoá ${toDelete.length} mục đăng ký bị spam.`);
+    });
+  }
+</script>
+
+</body>
+</html>
