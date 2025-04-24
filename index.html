@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>TOOL 789.CLUB</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <style>
+    body {
+      background: #000;
+      color: cyan;
+      font-family: monospace;
+      text-align: center;
+      padding: 30px 20px;
+      margin: 0;
+    }
+    input, button {
+      padding: 10px;
+      margin: 6px;
+      border-radius: 6px;
+      border: none;
+      width: 90%;
+      max-width: 300px;
+    }
+    input {
+      background: #111;
+      color: cyan;
+    }
+    button {
+      background: cyan;
+      color: black;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    h2 {
+      font-size: 22px;
+      background: linear-gradient(90deg, red, orange, yellow, green, cyan, blue, violet);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: rainbow 5s linear infinite;
+    }
+    @keyframes rainbow {
+      0% { filter: hue-rotate(0deg); }
+      100% { filter: hue-rotate(360deg); }
+    }
+    .hidden { display: none; }
+    .result {
+      margin-top: 20px;
+      font-size: 22px;
+      color: yellow;
+    }
+    .top-right {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+    }
+    a {
+      color: #0ff;
+      text-decoration: underline;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>CHÀO MỪNG ĐẾN VỚI TOOL 789.CLUB</h2>
+  <button class="top-right hidden" id="logoutBtn" onclick="dangXuat()">Đăng xuất</button>
+
+  <!-- Đăng ký -->
+  <div id="regBox">
+    <input type="email" id="regEmail" placeholder="Nhập Gmail để đăng ký">
+    <button onclick="dangKy()">Gửi yêu cầu đăng ký</button>
+    <p id="regStatus"></p>
+    <a href="https://t.me/ngoclinh2809" target="_blank">Liên hệ Admin duyệt key</a>
+  </div>
+
+  <!-- Đăng nhập -->
+  <div id="loginBox">
+    <input type="email" id="gmailInput" placeholder="Gmail đã được cấp key">
+    <input type="text" id="keyInput" placeholder="Nhập key">
+    <button onclick="kiemTraKey()">Vào Tool</button>
+  </div>
+
+  <!-- Tool -->
+  <div id="toolBox" class="hidden">
+    <input type="number" id="phienInput" placeholder="Nhập mã phiên..." />
+    <button onclick="duDoanPhien()">DỰ ĐOÁN</button>
+    <div id="ketqua" class="result">Kết quả sẽ hiển thị tại đây</div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDV-WnnRBzNGaJjCmJMY7NOWEPFioHOioU",
+      authDomain: "duybao-v11.firebaseapp.com",
+      databaseURL: "https://duybao-v11-default-rtdb.firebaseio.com",
+      projectId: "duybao-v11"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    function dangKy() {
+      const email = document.getElementById("regEmail").value.trim();
+      if (!email) return alert("Vui lòng nhập Gmail!");
+      const id = Date.now();
+      db.ref("dangky/" + id).set({ email, time: new Date().toLocaleString() }, err => {
+        document.getElementById("regStatus").innerText = err ? "Lỗi gửi đăng ký." : "Đã gửi yêu cầu, chờ admin duyệt.";
+      });
+    }
+
+    function kiemTraKey() {
+      const email = document.getElementById("gmailInput").value.trim();
+      const key = document.getElementById("keyInput").value.trim();
+      if (!email || !key) return alert("Nhập đủ Gmail và Key!");
+
+      db.ref("keys/" + key).once("value", snap => {
+        if (!snap.exists()) return alert("Key không tồn tại!");
+        const data = snap.val();
+        if (data.email !== email) return alert("Email không khớp với key!");
+        const now = new Date();
+        if (data.expire !== "forever" && new Date(data.expire) < now)
+          return alert("Key đã hết hạn!");
+        if (data.used >= data.maxUse)
+          return alert("Key vượt số lượt!");
+        db.ref("keys/" + key + "/used").set((data.used || 0) + 1);
+        localStorage.setItem("gmail", email);
+        document.getElementById("loginBox").style.display = "none";
+        document.getElementById("regBox").style.display = "none";
+        document.getElementById("toolBox").classList.remove("hidden");
+        document.getElementById("logoutBtn").classList.remove("hidden");
+      });
+    }
+
+    function dangXuat() {
+      localStorage.removeItem("gmail");
+      location.reload();
+    }
+
+    function duDoanPhien() {
+      const phien = document.getElementById("phienInput").value.trim();
+      if (!phien || isNaN(phien)) {
+        document.getElementById("ketqua").innerText = "Vui lòng nhập mã phiên hợp lệ!";
+        return;
+      }
+      const n = parseInt(phien);
+      const hash = (n * 17 + 1337) ^ (n >> 2);
+      const total = (hash % 11) + 4; // total từ 4 -> 14
+      const kq = total <= 10 ? "XỈU" : "TÀI";
+      document.getElementById("ketqua").innerText = `KẾT QUẢ: ${kq} (Tổng: ${total})`;
+    }
+  </script>
+
+</body>
+</html>
